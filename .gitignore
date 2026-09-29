@@ -1,0 +1,4 @@
+.secrets.json
+.bugbug_token
+jira_cache.json
+__pycache__/
