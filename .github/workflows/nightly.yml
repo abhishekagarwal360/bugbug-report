@@ -2,6 +2,7 @@ name: BugBug sheet daily
 on:
   schedule:
     - cron: '30 5 * * *'    # 11:00 AM IST
+    - cron: '0 10 * * *'    # 3:30 PM IST - night closed at 3 PM, row final
   workflow_dispatch:
 permissions:
   contents: write           # only for the keepalive commit below
