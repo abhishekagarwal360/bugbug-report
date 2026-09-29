@@ -1,8 +1,9 @@
 name: BugBug sheet daily
 on:
   schedule:
-    - cron: '30 5 * * *'    # 11:00 AM IST
-    - cron: '0 10 * * *'    # 3:30 PM IST - night closed at 3 PM, row final
+    # off the hour on purpose: GitHub delays or drops scheduled jobs at :00 / :30 under load
+    - cron: '17 5 * * *'    # 10:47 AM IST - ready before the 11 AM standup
+    - cron: '7 10 * * *'    # 3:37 PM IST - night closed at 3 PM, row final
   workflow_dispatch:
 permissions:
   contents: write           # only for the keepalive commit below
@@ -11,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Update the Google Sheet
         env:
           PYTHONIOENCODING: utf-8

@@ -117,6 +117,8 @@ function changeSummary(oldDaily, oldJira) {
     });
     if (bits.length) updated.push(`${short(r[0])}${tag}: ${bits.join('; ')}`);
   }
+  const now = new Set(d.daily.map(r => base(r[0])));
+  const removed = Object.keys(prev).filter(k => !now.has(k)).map(short);
 
   const keyOf = v => (String(v).match(/,"([^"]+)"\)$/) || [, String(v)])[1];
   const oldJ = Object.fromEntries(oldJira.filter(r => r[6]).map(r => [String(r[6]), r]));
@@ -140,8 +142,8 @@ function changeSummary(oldDaily, oldJira) {
     year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
   const list = (a, none) => a.length ? a.map(x => '  - ' + x).join('\n') : '  ' + none;
   return [`Last update: ${when} IST (${how})`, '',
-    `BugBug - ${added.length} row(s) added, ${updated.length} updated`,
-    list([...added.map(x => 'added ' + x), ...updated.map(x => 'updated ' + x)], 'no change'), '',
+    `BugBug - ${added.length} row(s) added, ${updated.length} updated` + (removed.length ? `, ${removed.length} removed` : ''),
+    list([...added.map(x => 'added ' + x), ...updated.map(x => 'updated ' + x), ...removed.map(x => 'removed ' + x)], 'no change'), '',
     `JIRA - ${jAdded.length} ticket(s) added, ${jUpdated.length} updated`,
     list([...jAdded.map(x => 'added ' + x), ...jUpdated.map(x => 'updated ' + x)], 'no change')].join('\n');
 }
