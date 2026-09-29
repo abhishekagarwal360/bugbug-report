@@ -4,7 +4,6 @@ on:
     # off the hour on purpose: GitHub delays or drops scheduled jobs at :00 / :30 under load
     - cron: '23 4 * * *'    # 9:53 AM IST - done before the 11 AM standup even if GitHub starts it an hour late
     - cron: '7 10 * * *'    # 3:37 PM IST - night closed at 3 PM, row final
-    - cron: '32 10 29 9 *'  # TEMP test: 4:02 PM IST on 29 Sep only - remove after checking
   workflow_dispatch:
 permissions:
   contents: write           # only for the keepalive commit below
