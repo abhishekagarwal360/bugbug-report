@@ -92,7 +92,7 @@ It prints three markdown tables and writes `~/Downloads/bugbug-qc-YYYY-MM-DD.xls
 
 ## Daily automation (no Claude, runs itself)
 
-- **GitHub Actions** in the private repo `abhishekagarwal360/bugbug-report` runs `python3 bugbug_report.py auto` at **11:00 AM IST** daily (cron `30 5 * * *` UTC; GitHub can start it 5–30 min late). Manual run: repo → Actions → *BugBug sheet daily* → Run workflow.
+- **GitHub Actions** in the private repo `abhishekagarwal360/bugbug-report` runs `python3 bugbug_report.py auto` at **11:00 AM IST** daily (cron `30 5 * * *` UTC; GitHub can start it 5–30 min late). Manual run: https://github.com/abhishekagarwal360/bugbug-report/actions/workflows/nightly.yml → **Run workflow** → green **Run workflow** (signed in as abhishekagarwal360).
 - `auto` = the whole "update sheet" flow with **zero Claude tokens**: JIRA via REST (Atlassian API token), BugBug via its MCP server at `https://mcp.bugbug.io/mcp` with a **per-project** Bearer token (the REST API `app.bugbug.io/api/v1` is blocked on the Pro plan, the MCP server is not), then sync → jira → sheet → push → read-back verify. It fails loudly if the read-back doesn't match.
 - Keys: GitHub secrets `BUGBUG_TOKENS` (JSON map projectId → token), `ATLASSIAN_EMAIL`, `ATLASSIAN_API_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GOOGLE_SA_JSON`. On the laptop the same keys come from `.secrets.json` (gitignored), seo-digest's `.env` and the SA key file in Downloads.
 - A keepalive step makes an empty commit when the repo has had none for 50 days; GitHub disables scheduled jobs after 60 idle days.
