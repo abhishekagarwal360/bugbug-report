@@ -735,7 +735,10 @@ def auto():
         raise SystemExit("gave up: BugBug paging did not finish in 300 rounds")
     sync(n)
     sync_jira()
-    to = str(windows(1)[0][-1][0])
+    (night, start, _), now = windows(1)[0][-1], datetime.now(timezone.utc)
+    if now - start < timedelta(hours=3):   # 3:30 PM run: tonight's batches haven't started, skip its empty row
+        night -= timedelta(days=1)
+    to = str(night)
     sys.argv += ["--from", SHEET_FROM, "--to", to]
     sheet()
     here = os.path.dirname(os.path.abspath(__file__))

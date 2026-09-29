@@ -95,6 +95,57 @@ const band = (sheetId, from, to, formats) => formats.map((f, c) => ({ repeatCell
 const widths = (sheetId, px) => px.map((p, i) => ({ updateDimensionProperties: {
   range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: p }, fields: 'pixelSize' } }));
 
+// ---- what changed since the last push, in plain words --------------------------------------
+function changeSummary(oldDaily, oldJira) {
+  const base = l => String(l || '').replace(' (partial)', '');
+  const short = l => base(l).replace(/ \d{4}$/, '');
+  const same = (a, b) => typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : String(a ?? '') === String(b ?? '');
+  const labels = d.labels;
+  const fmt = (r, i) => `${r[1 + i * NCOL]}/${r[2 + i * NCOL]}`;
+
+  const prev = Object.fromEntries(oldDaily.filter(r => r[0] && !String(r[0]).startsWith('Average')).map(r => [base(r[0]), r]));
+  const added = [], updated = [];
+  for (const r of d.daily.filter(r => !String(r[0]).startsWith('Average'))) {
+    const o = prev[base(r[0])];
+    const tag = String(r[0]).includes('(partial)') ? ' (partial)' : '';
+    if (!o) { added.push(short(r[0]) + tag); continue; }
+    const bits = [];
+    if (String(o[0]).includes('(partial)') && !tag) bits.push('partial -> final');
+    labels.forEach((lab, i) => {
+      const cols = [1, 2, 3, 4].map(k => k + i * NCOL);
+      if (cols.some(c => !same(o[c], r[c]))) bits.push(`${lab} ${fmt(o, i)} -> ${fmt(r, i)}`);
+    });
+    if (bits.length) updated.push(`${short(r[0])}${tag}: ${bits.join('; ')}`);
+  }
+
+  const keyOf = v => (String(v).match(/,"([^"]+)"\)$/) || [, String(v)])[1];
+  const oldJ = Object.fromEntries(oldJira.filter(r => r[6]).map(r => [String(r[6]), r]));
+  const jAdded = [], jUpdated = [];
+  const names = d.jira_header;
+  for (const r of d.jira) {
+    const key = keyOf(r[6]), o = oldJ[key];
+    if (!o) { jAdded.push(key); continue; }
+    const bits = [];
+    for (const c of [0, 1, 2, 3, 4, 5]) {
+      const nv = String(r[c] ?? '').replace(/^'/, ''), ov = String(o[c] ?? '');
+      if (c === 1 ? ov !== nv && !(typeof o[c] === 'number') : ov !== nv)
+        bits.push(c === 3 ? `${ov} -> ${nv}` : `${names[c].toLowerCase()} changed`);
+    }
+    if (bits.length) jUpdated.push(`${key} (${bits.join(', ')})`);
+  }
+
+  const ev = process.env.GITHUB_EVENT_NAME;
+  const how = ev === 'schedule' ? 'scheduled run' : ev ? 'manual run on GitHub' : 'manual run from laptop';
+  const when = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short',
+    year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  const list = (a, none) => a.length ? a.map(x => '  - ' + x).join('\n') : '  ' + none;
+  return [`Last update: ${when} IST (${how})`, '',
+    `BugBug - ${added.length} row(s) added, ${updated.length} updated`,
+    list([...added.map(x => 'added ' + x), ...updated.map(x => 'updated ' + x)], 'no change'), '',
+    `JIRA - ${jAdded.length} ticket(s) added, ${jUpdated.length} updated`,
+    list([...jAdded.map(x => 'added ' + x), ...jUpdated.map(x => 'updated ' + x)], 'no change')].join('\n');
+}
+
 (async () => {
   const tok = await token();
   const meta = await api(tok, '?fields=sheets.properties', 'GET');
@@ -162,6 +213,11 @@ const widths = (sheetId, px) => px.map((p, i) => ({ updateDimensionProperties: {
   const pxD = colPx(db, WIDTH, DEFAULT_WIDTHS.slice(0, WIDTH));
   const pxJ = colPx(jb, JW, DEFAULT_JIRA_WIDTHS.slice(0, JW));
 
+  // ---- 1b. old values, so the run can say what it added / changed ---------------------------
+  const old = fresh.size ? { valueRanges: [{}, {}] } : await api(tok,
+    `/values:batchGet?valueRenderOption=UNFORMATTED_VALUE&ranges=Daily!A3:ZZ2000&ranges=${encodeURIComponent("'JIRA tickets'!A2:ZZ2000")}`, 'GET');
+  const summary = changeSummary(old.valueRanges[0].values || [], old.valueRanges[1].values || []);
+
   // ---- 2. clear stale merges, then write values -----------------------------------------
   await api(tok, ':batchUpdate', 'POST', { requests: [
     { unmergeCells: { range: { sheetId: daily, startRowIndex: 0, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: WIDTH } } },
@@ -216,4 +272,10 @@ const widths = (sheetId, px) => px.map((p, i) => ({ updateDimensionProperties: {
       throw new Error(`verify failed: Daily ${got.length}/${want.length} rows (top "${got[0]}"), JIRA ${jrows}/${d.jira.length}`);
     console.log(`verified: top row "${got[0]}", ${want.length} Daily rows, ${jrows} JIRA rows`);
   }
+  // ---- 4. run summary: on the GitHub run page only (annotation + Summary tab), never in the sheet
+  console.log('\n' + summary);
+  if (process.env.GITHUB_ACTIONS)
+    console.log(`::notice title=BugBug sheet updated::${summary.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A')}`);
+  if (process.env.GITHUB_STEP_SUMMARY)
+    require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, '```\n' + summary + '\n```\n');
 })().catch(e => { console.error('FAILED:', e.message); process.exit(1); });
