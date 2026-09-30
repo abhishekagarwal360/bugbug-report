@@ -137,7 +137,11 @@ function changeSummary(oldDaily, oldJira) {
   }
 
   const ev = process.env.GITHUB_EVENT_NAME;
-  const how = ev === 'schedule' ? 'scheduled run' : ev ? 'manual run on GitHub' : 'manual run from laptop';
+  let src = '';   // the Vercel trigger passes source=vercel-cron-am/pm/test as a workflow input
+  try { src = JSON.parse(require('fs').readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')).inputs?.source || ''; } catch {}
+  const how = ev === 'schedule' ? 'GitHub schedule - backup trigger'
+    : src.startsWith('vercel-cron') ? `Vercel cron - main trigger (${src.replace('vercel-cron-', '')})`
+    : ev ? 'manual run on GitHub' : 'manual run from laptop';
   const when = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short',
     year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
   const list = (a, none) => a.length ? a.map(x => '  - ' + x).join('\n') : '  ' + none;
