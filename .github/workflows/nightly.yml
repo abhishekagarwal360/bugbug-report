@@ -1,12 +1,26 @@
 name: BugBug sheet daily
+run-name: BugBug sheet (${{ inputs.source || github.event_name }})
 on:
+  # Main trigger: the Vercel cron in trigger/ (9:30-10:29 AM and 3:30-4:29 PM IST).
+  # Backup trigger: GitHub's own schedule below, which can be delayed or dropped under load.
   schedule:
     # off the hour on purpose: GitHub delays or drops scheduled jobs at :00 / :30 under load
-    - cron: '23 4 * * *'    # 9:53 AM IST - done before the 11 AM standup even if GitHub starts it an hour late
+    - cron: '23 4 * * *'    # 9:53 AM IST - done before the 11 AM standup
     - cron: '7 10 * * *'    # 3:37 PM IST - night closed at 3 PM, row final
   workflow_dispatch:
+    inputs:
+      source:
+        description: Who started it (the Vercel trigger sends vercel-cron-am / -pm)
+        default: manual
+      token_expires:
+        description: Expiry of the Vercel trigger's GitHub token (filled in by the trigger)
+        default: ''
+concurrency:
+  group: bugbug-sheet       # two triggers at once queue up instead of writing the sheet together
+  cancel-in-progress: false
 permissions:
   contents: write           # only for the keepalive commit below
+  actions: read             # to check that the Vercel trigger is still firing
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -24,7 +38,38 @@ jobs:
           GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
         run: |
           set -o pipefail
-          python3 bugbug_report.py auto 2>&1 | grep -v "projectId="
+          # one retry after a minute covers a passing blip at BugBug, JIRA, Supabase or Google
+          python3 bugbug_report.py auto 2>&1 | grep -v "projectId=" || {
+            echo "::warning::First attempt failed - retrying in 60 seconds"
+            sleep 60
+            python3 bugbug_report.py auto 2>&1 | grep -v "projectId="
+          }
+      # Alerts come as GitHub's own "run failed" email, so a quiet or expiring trigger is never silent
+      - name: Check the Vercel trigger
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPIRES: ${{ inputs.token_expires }}
+        run: |
+          if [ -n "$EXPIRES" ]; then
+            left=$(( ( $(date -d "$EXPIRES" +%s) - $(date +%s) ) / 86400 ))
+            echo "Vercel trigger's GitHub token expires $EXPIRES ($left days left)"
+            if [ "$left" -lt 14 ]; then
+              echo "::error::The Vercel trigger's GitHub token expires on $EXPIRES ($left days left). Make a new one and replace GH_TOKEN in the bugbug-trigger project on Vercel."
+              exit 1
+            fi
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            last=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" \
+              -q '[.workflow_runs[] | select(.display_title | contains("vercel-cron"))][0].created_at // ""')
+            if [ -z "$last" ]; then echo "No Vercel-triggered run yet - nothing to check"; exit 0; fi
+            hours=$(( ( $(date +%s) - $(date -d "$last" +%s) ) / 3600 ))
+            echo "Last Vercel-triggered run: $last ($hours hours ago)"
+            if [ "$hours" -ge 26 ]; then
+              echo "::error::The Vercel trigger hasn't started a run for $hours hours. The sheet still updated from GitHub's own schedule, but the main trigger is down - check the bugbug-trigger project on Vercel (cron logs, GH_TOKEN)."
+              exit 1
+            fi
+          fi
       # GitHub switches off scheduled jobs in a repo with no commits for 60 days
       - name: Keepalive
         run: |

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/api/trigger?slot=am", "schedule": "0 4 * * *" },
+    { "path": "/api/trigger?slot=pm", "schedule": "0 10 * * *" }
+  ],
+  "functions": {
+    "api/trigger.js": { "maxDuration": 150 }
+  }
+}

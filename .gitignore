@@ -2,3 +2,4 @@
 .bugbug_token
 jira_cache.json
 __pycache__/
+trigger/.vercel/
