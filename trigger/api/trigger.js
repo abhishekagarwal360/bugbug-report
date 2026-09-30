@@ -3,7 +3,9 @@
 // GitHub's schedule is the backup. Running the workflow twice is harmless (it just refreshes).
 const REPO = 'abhishekagarwal360/bugbug-report';
 const WORKFLOW = 'nightly.yml';
-const WAITS = [0, 10, 30, 60];   // seconds before each attempt (4 tries, ~100 s worst case)
+// seconds before each attempt: 6 tries over ~5 min. On 30 Sep GitHub's API returned 500s for ~2 min
+// while its status page showed green, so a short retry window is not enough.
+const WAITS = [0, 15, 30, 60, 90, 90];
 
 const sleep = s => new Promise(r => setTimeout(r, s * 1000));
 const gh = (path, init = {}) => fetch('https://api.github.com' + path, {

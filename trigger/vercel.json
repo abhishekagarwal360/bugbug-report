@@ -1,10 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/trigger?slot=am", "schedule": "0 4 * * *" },
-    { "path": "/api/trigger?slot=pm", "schedule": "0 10 * * *" }
+    { "path": "/api/trigger?slot=am1", "schedule": "0 3 * * *" },
+    { "path": "/api/trigger?slot=am2", "schedule": "0 4 * * *" },
+    { "path": "/api/trigger?slot=pm1", "schedule": "0 10 * * *" },
+    { "path": "/api/trigger?slot=pm2", "schedule": "0 11 * * *" }
   ],
   "functions": {
-    "api/trigger.js": { "maxDuration": 150 }
+    "api/trigger.js": { "maxDuration": 300 }
   }
 }
