@@ -586,9 +586,18 @@ def sheet_data(a="2000-01-01", b="2999-12-31"):
     part = {r["night"] for r in nights if r["partial"]}
     jira = sorted(sb_select("bugbug_jira?select=*"), key=lambda r: r["created"], reverse=True)
     by = {(r["project"], r["night"]): r for r in nights}
+    # Count each ticket in the NIGHT it was raised (3 PM -> 3 PM IST, the same cut as the runs), not by its
+    # calendar date: a ticket raised at 11 AM on 1 Oct belongs to the night labelled 30 Sep (until 1 Oct, it
+    # was filed under a 1 Oct row that didn't exist yet and dropped). bugbug_jira only keeps the date, so
+    # the full created time comes from jira_cache.json, which `jira` / `auto` refresh before this runs.
+    night_of_ticket = {}
+    for k, n in jira_cache()["nodes"].items():
+        c = (n.get("fields") or {}).get("created")
+        if c:
+            night_of_ticket[k] = str((ts(c).astimezone(timezone.utc) - CUT).date())
     jcount = defaultdict(int)
     for t in jira:
-        jcount[(t["bugbug_project"], t["created"])] += 1
+        jcount[(t["bugbug_project"], night_of_ticket.get(t["key"], t["created"]))] += 1
     days = sorted({r["night"] for r in nights}, reverse=True)
     labels = list(PROJECTS.values())
     daily = []

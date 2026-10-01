@@ -112,8 +112,9 @@ function changeSummary(oldDaily, oldJira) {
     const bits = [];
     if (String(o[0]).includes('(partial)') && !tag) bits.push('partial -> final');
     labels.forEach((lab, i) => {
-      const cols = [1, 2, 3, 4].map(k => k + i * NCOL);
-      if (cols.some(c => !same(o[c], r[c]))) bits.push(`${lab} ${fmt(o, i)} -> ${fmt(r, i)}`);
+      const runs = [1, 2, 3].map(k => k + i * NCOL), j = 4 + i * NCOL;
+      if (runs.some(c => !same(o[c], r[c]))) bits.push(`${lab} ${fmt(o, i)} -> ${fmt(r, i)}`);
+      if (!same(o[j], r[j])) bits.push(`${lab} JIRA created ${o[j] ?? 0} -> ${r[j]}`);
     });
     if (bits.length) updated.push(`${short(r[0])}${tag}: ${bits.join('; ')}`);
   }
