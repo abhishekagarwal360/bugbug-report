@@ -1,12 +1,202 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/trigger?slot=am1", "schedule": "0 3 * * *" },
-    { "path": "/api/trigger?slot=am2", "schedule": "0 4 * * *" },
-    { "path": "/api/trigger?slot=pm1", "schedule": "0 10 * * *" },
-    { "path": "/api/trigger?slot=pm2", "schedule": "0 11 * * *" }
+    {
+      "path": "/api/trigger?slot=ist0800",
+      "schedule": "30 2 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0815",
+      "schedule": "45 2 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0830",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0845",
+      "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0900",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0915",
+      "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0930",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0945",
+      "schedule": "15 4 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1000",
+      "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1015",
+      "schedule": "45 4 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1030",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1045",
+      "schedule": "15 5 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1100",
+      "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1115",
+      "schedule": "45 5 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1130",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1145",
+      "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1200",
+      "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1215",
+      "schedule": "45 6 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1230",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1245",
+      "schedule": "15 7 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1300",
+      "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1315",
+      "schedule": "45 7 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1330",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1345",
+      "schedule": "15 8 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1400",
+      "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1415",
+      "schedule": "45 8 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1430",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1445",
+      "schedule": "15 9 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1500",
+      "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1515",
+      "schedule": "45 9 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1530",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1545",
+      "schedule": "15 10 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1600",
+      "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1700",
+      "schedule": "30 11 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1800",
+      "schedule": "30 12 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist1900",
+      "schedule": "30 13 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist2000",
+      "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist2100",
+      "schedule": "30 15 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist2200",
+      "schedule": "30 16 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist2300",
+      "schedule": "30 17 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0000",
+      "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0100",
+      "schedule": "30 19 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0200",
+      "schedule": "30 20 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0300",
+      "schedule": "30 21 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0400",
+      "schedule": "30 22 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0500",
+      "schedule": "30 23 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0600",
+      "schedule": "30 0 * * *"
+    },
+    {
+      "path": "/api/trigger?slot=ist0700",
+      "schedule": "30 1 * * *"
+    }
   ],
   "functions": {
-    "api/trigger.js": { "maxDuration": 300 }
+    "api/trigger.js": {
+      "maxDuration": 300
+    }
   }
 }

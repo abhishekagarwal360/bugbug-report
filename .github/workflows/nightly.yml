@@ -1,7 +1,7 @@
 name: BugBug sheet daily
 run-name: BugBug sheet (${{ inputs.source || github.event_name }})
 on:
-  # Main trigger: the Vercel cron in trigger/ (9:30-10:29 AM and 3:30-4:29 PM IST).
+  # Main trigger: the Vercel cron in trigger/ (every 15 min 8 AM-4 PM IST, then hourly).
   # Backup trigger: GitHub's own schedule below, which can be delayed or dropped under load.
   schedule:
     # off the hour on purpose: GitHub delays or drops scheduled jobs at :00 / :30 under load
