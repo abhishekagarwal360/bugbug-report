@@ -660,6 +660,20 @@ def sheet():
 SECRETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".secrets.json")
 SHEET_ID = "16or5bwqoGmlC6QuV1CZm8xXCUoO6VGPNjx3hpPF69Wc"
 SHEET_FROM = "2026-08-25"
+# "JIRA_Automation Sanity" tab (asked 21 Oct): tickets QA labels both "automation" and "sanity" - raised
+# from the QA automation email reports, not BugBug. Same columns as JIRA_BugBug minus "BugBug test"
+# (these tickets carry no BugBug link). Small set, so it is re-read whole on every run, no cache.
+SANITY_JQL = (f'project in (M91, MSP) AND labels = automation AND labels = sanity '
+              f'AND created >= "{SHEET_FROM}" ORDER BY created DESC')
+
+
+def sanity_row(n):
+    f = n["fields"]
+    summary, jp = f.get("summary") or "", n["key"].split("-")[0]
+    return ["91m Indonesia" if "indonesia" in summary.lower() else JPROJ.get(jp, jp), f["created"][:10],
+            (f.get("reporter") or {}).get("displayName"), (f.get("status") or {}).get("name"),
+            (f.get("issuetype") or {}).get("name"), ("'" + summary) if summary.startswith(("=", "+")) else summary,
+            f'=HYPERLINK("{n["webUrl"]}","{n["key"]}")']
 JIRA_SITE = "https://91mobile.atlassian.net"
 
 
@@ -696,11 +710,11 @@ def bugbug_page(call, tokens):
     return args, res["result"]["structuredContent"]
 
 
-def jira_search():
+def jira_search(jql=None):
     import base64
     auth = base64.b64encode(f'{secret("ATLASSIAN_EMAIL")}:{secret("ATLASSIAN_API_TOKEN")}'.encode()).decode()
     nodes, token = [], None
-    jql = f"project in (M91, MSP) AND created >= -90d AND {JIRA_MATCH} ORDER BY created DESC"
+    jql = jql or f"project in (M91, MSP) AND created >= -90d AND {JIRA_MATCH} ORDER BY created DESC"
     while True:
         body = {"jql": jql, "maxResults": 100,
                 "fields": ["summary", "status", "created", "description", "reporter", "issuetype", "labels", "components", "project"]}
@@ -750,9 +764,13 @@ def auto():
     to = str(night)
     sys.argv += ["--from", SHEET_FROM, "--to", to]
     sheet()
+    jpath = os.path.join(tempfile.gettempdir(), "bugbug_sheet_data.json")
+    payload = json.load(open(jpath, encoding="utf-8"))
+    payload["sanity"] = [sanity_row(n) for n in jira_search(SANITY_JQL)]
+    json.dump(payload, open(jpath, "w", encoding="utf-8"))
+    print(f"{len(payload['sanity'])} automation sanity tickets")
     here = os.path.dirname(os.path.abspath(__file__))
-    subprocess.run(["node", os.path.join(here, "sheets_push.js"), SHEET_ID,
-                    os.path.join(tempfile.gettempdir(), "bugbug_sheet_data.json"), "--verify"], check=True)
+    subprocess.run(["node", os.path.join(here, "sheets_push.js"), SHEET_ID, jpath, "--verify"], check=True)
 
 
 if __name__ == "__main__":

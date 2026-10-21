@@ -18,6 +18,9 @@ const d = JSON.parse(require('fs').readFileSync(DATA, 'utf8'));
 const NCOL = 4;                       // Failed | Total | Fail % | JIRA created
 const WIDTH = 1 + NCOL * d.labels.length;
 const JW = d.jira_header.length;
+// "JIRA_Automation Sanity" tab: same columns and look as JIRA_BugBug, minus "BugBug test".
+// Only `auto` adds d.sanity; a payload without it leaves that tab alone.
+const ST = 'JIRA_Automation Sanity', SW = JW - 1, sanity = d.sanity;
 const b64 = o => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url');
 
 // --- seed look, used only when a tab has to be created from scratch ---------------------
@@ -158,14 +161,14 @@ function changeSummary(oldDaily, oldJira) {
   const meta = await api(tok, '?fields=sheets.properties', 'GET');
   const ids = Object.fromEntries(meta.sheets.map(s => [s.properties.title, s.properties.sheetId]));
 
-  const want = ['Daily', 'JIRA_BugBug'];
+  const want = ['Daily', 'JIRA_BugBug', ...(sanity ? [ST] : [])];
   const missing = want.filter(t => !(t in ids));
   const fresh = new Set(missing);
   if (missing.length) {
     const res = await api(tok, ':batchUpdate', 'POST', { requests: missing.map(title => ({ addSheet: { properties: { title } } })) });
     res.replies.forEach(r => { ids[r.addSheet.properties.title] = r.addSheet.properties.sheetId; });
   }
-  const daily = ids['Daily'], jira = ids['JIRA_BugBug'];
+  const daily = ids['Daily'], jira = ids['JIRA_BugBug'], sid = ids[ST];
 
   // ---- 1. snapshot his formatting BEFORE we touch anything ------------------------------
   let colA = [];
@@ -221,9 +224,15 @@ function changeSummary(oldDaily, oldJira) {
   const pxJ = colPx(jb, JW, DEFAULT_JIRA_WIDTHS.slice(0, JW));
 
   // ---- 1b. old values, so the run can say what it added / changed ---------------------------
-  const old = fresh.size ? { valueRanges: [{}, {}] } : await api(tok,
+  const old = fresh.has('Daily') || fresh.has('JIRA_BugBug') ? { valueRanges: [{}, {}] } : await api(tok,
     `/values:batchGet?valueRenderOption=UNFORMATTED_VALUE&ranges=Daily!A3:ZZ2000&ranges=${encodeURIComponent("'JIRA_BugBug'!A2:ZZ2000")}`, 'GET');
-  const summary = changeSummary(old.valueRanges[0].values || [], old.valueRanges[1].values || []);
+  let summary = changeSummary(old.valueRanges[0].values || [], old.valueRanges[1].values || []);
+  if (sanity) {
+    const was = new Set(((await api(tok, `/values/${encodeURIComponent(`'${ST}'!G2:G2000`)}?valueRenderOption=FORMULA`, 'GET')).values || [])
+      .map(r => (String(r[0]).match(/,"([^"]+)"\)$/) || [])[1]));
+    const newKeys = sanity.map(r => r[6].match(/,"([^"]+)"\)$/)[1]).filter(k => !was.has(k));
+    summary += `\n\nAutomation Sanity - ${sanity.length} ticket(s), ${newKeys.length} new` + (newKeys.length ? ': ' + newKeys.join(', ') : '');
+  }
 
   // ---- 2. clear stale merges, then write values -----------------------------------------
   await api(tok, ':batchUpdate', 'POST', { requests: [
@@ -238,6 +247,11 @@ function changeSummary(oldDaily, oldJira) {
   // USER_ENTERED so the =HYPERLINK() cells become real links (RAW would store them as text)
   await api(tok, `/values/${encodeURIComponent("'JIRA_BugBug'!A1")}?valueInputOption=USER_ENTERED`, 'PUT',
             { values: [d.jira_header, ...d.jira] });
+  if (sanity) {
+    await api(tok, '/values/' + encodeURIComponent(`'${ST}'!A1:ZZ2000`) + ':clear', 'POST', {});
+    await api(tok, `/values/${encodeURIComponent(`'${ST}'!A1`)}?valueInputOption=USER_ENTERED`, 'PUT',
+              { values: [d.jira_header.slice(0, SW), ...sanity] });
+  }
 
   // ---- 3. re-apply the snapshot to the NEW shape ----------------------------------------
   const nRows = d.daily.length, lastRow = 2 + nRows;      // 1-based row of the Average line
@@ -266,10 +280,19 @@ function changeSummary(oldDaily, oldJira) {
                     cell: {}, fields: 'userEnteredFormat' } },
     { updateSheetProperties: { properties: { sheetId: jira, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
     ...widths(jira, pxJ),
+    // the sanity tab copies JIRA_BugBug's look, so a format change there carries over here too
+    ...(sanity ? [
+      cells(sid, 0, fJHead.slice(0, SW)),
+      ...band(sid, 1, 1 + sanity.length, fJData.slice(0, SW)),
+      { repeatCell: { range: { sheetId: sid, startRowIndex: 1 + sanity.length, endRowIndex: 2000, startColumnIndex: 0, endColumnIndex: SW },
+                      cell: {}, fields: 'userEnteredFormat' } },
+      { updateSheetProperties: { properties: { sheetId: sid, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
+      ...widths(sid, pxJ.slice(0, SW)),
+    ] : []),
   ];
   await api(tok, ':batchUpdate', 'POST', { requests: reqs });
   const src = fresh.size ? 'seed defaults' : 'snapshot of existing formatting';
-  console.log(`pushed: Daily ${nRows} rows x ${WIDTH} cols, JIRA tickets ${d.jira.length} rows (format: ${src})`);
+  console.log(`pushed: Daily ${nRows} rows x ${WIDTH} cols, JIRA_BugBug ${d.jira.length} rows${sanity ? `, ${ST} ${sanity.length} rows` : ''} (format: ${src})`);
   if (process.argv.includes('--verify')) {   // read back: every date label and the JIRA row count must match
     const v = await api(tok, `/values:batchGet?ranges=Daily!A1:A2000&ranges=${encodeURIComponent("'JIRA_BugBug'!A1:A2000")}`, 'GET');
     const got = (v.valueRanges[0].values || []).slice(2).map(r => r[0]);
@@ -277,6 +300,10 @@ function changeSummary(oldDaily, oldJira) {
     const jrows = (v.valueRanges[1].values || []).length - 1;
     if (JSON.stringify(got) !== JSON.stringify(want) || jrows !== d.jira.length)
       throw new Error(`verify failed: Daily ${got.length}/${want.length} rows (top "${got[0]}"), JIRA ${jrows}/${d.jira.length}`);
+    if (sanity) {
+      const srows = ((await api(tok, `/values/${encodeURIComponent(`'${ST}'!A1:A2000`)}`, 'GET')).values || []).length - 1;
+      if (srows !== sanity.length) throw new Error(`verify failed: ${ST} ${srows}/${sanity.length} rows`);
+    }
     console.log(`verified: top row "${got[0]}", ${want.length} Daily rows, ${jrows} JIRA rows`);
   }
   // ---- 4. run summary: on the GitHub run page only (annotation + Summary tab), never in the sheet
