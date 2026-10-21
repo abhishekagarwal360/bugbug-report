@@ -158,14 +158,14 @@ function changeSummary(oldDaily, oldJira) {
   const meta = await api(tok, '?fields=sheets.properties', 'GET');
   const ids = Object.fromEntries(meta.sheets.map(s => [s.properties.title, s.properties.sheetId]));
 
-  const want = ['Daily', 'JIRA tickets'];
+  const want = ['Daily', 'JIRA_BugBug'];
   const missing = want.filter(t => !(t in ids));
   const fresh = new Set(missing);
   if (missing.length) {
     const res = await api(tok, ':batchUpdate', 'POST', { requests: missing.map(title => ({ addSheet: { properties: { title } } })) });
     res.replies.forEach(r => { ids[r.addSheet.properties.title] = r.addSheet.properties.sheetId; });
   }
-  const daily = ids['Daily'], jira = ids['JIRA tickets'];
+  const daily = ids['Daily'], jira = ids['JIRA_BugBug'];
 
   // ---- 1. snapshot his formatting BEFORE we touch anything ------------------------------
   let colA = [];
@@ -178,7 +178,7 @@ function changeSummary(oldDaily, oldJira) {
     ranges.push(`Daily!A1:${A1(WIDTH)}4`);   // rows 1-2 header, 3 = first data row, 4 = a middle row
     if (oldAvg) ranges.push(`Daily!A${oldLast}:${A1(WIDTH)}${oldAvg}`);
   }
-  if (!fresh.has('JIRA tickets')) ranges.push(`'JIRA tickets'!A1:${A1(JW)}2`);
+  if (!fresh.has('JIRA_BugBug')) ranges.push(`'JIRA_BugBug'!A1:${A1(JW)}2`);
   let snap = { sheets: [] };
   if (ranges.length) {
     const q = ranges.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
@@ -204,7 +204,7 @@ function changeSummary(oldDaily, oldJira) {
     }
     return dflt;
   };
-  const db = blocks('Daily'), jb = blocks('JIRA tickets');
+  const db = blocks('Daily'), jb = blocks('JIRA_BugBug');
   const dflt = defaultHeader();
   const fHead1 = rowAt(db, 1, WIDTH) || dflt[0];
   const fHead2 = rowAt(db, 2, WIDTH) || dflt[1];
@@ -222,7 +222,7 @@ function changeSummary(oldDaily, oldJira) {
 
   // ---- 1b. old values, so the run can say what it added / changed ---------------------------
   const old = fresh.size ? { valueRanges: [{}, {}] } : await api(tok,
-    `/values:batchGet?valueRenderOption=UNFORMATTED_VALUE&ranges=Daily!A3:ZZ2000&ranges=${encodeURIComponent("'JIRA tickets'!A2:ZZ2000")}`, 'GET');
+    `/values:batchGet?valueRenderOption=UNFORMATTED_VALUE&ranges=Daily!A3:ZZ2000&ranges=${encodeURIComponent("'JIRA_BugBug'!A2:ZZ2000")}`, 'GET');
   const summary = changeSummary(old.valueRanges[0].values || [], old.valueRanges[1].values || []);
 
   // ---- 2. clear stale merges, then write values -----------------------------------------
@@ -234,9 +234,9 @@ function changeSummary(oldDaily, oldJira) {
   d.labels.forEach(l => { top.push(l, '', '', ''); sub.push('Failed', 'Total', 'Fail %', 'JIRA created'); });
   await api(tok, '/values/Daily!A1:ZZ2000:clear', 'POST', {});
   await api(tok, `/values/Daily!A1?valueInputOption=RAW`, 'PUT', { values: [top, sub, ...d.daily] });
-  await api(tok, '/values/' + encodeURIComponent("'JIRA tickets'!A1:ZZ2000") + ':clear', 'POST', {});
+  await api(tok, '/values/' + encodeURIComponent("'JIRA_BugBug'!A1:ZZ2000") + ':clear', 'POST', {});
   // USER_ENTERED so the =HYPERLINK() cells become real links (RAW would store them as text)
-  await api(tok, `/values/${encodeURIComponent("'JIRA tickets'!A1")}?valueInputOption=USER_ENTERED`, 'PUT',
+  await api(tok, `/values/${encodeURIComponent("'JIRA_BugBug'!A1")}?valueInputOption=USER_ENTERED`, 'PUT',
             { values: [d.jira_header, ...d.jira] });
 
   // ---- 3. re-apply the snapshot to the NEW shape ----------------------------------------
@@ -271,7 +271,7 @@ function changeSummary(oldDaily, oldJira) {
   const src = fresh.size ? 'seed defaults' : 'snapshot of existing formatting';
   console.log(`pushed: Daily ${nRows} rows x ${WIDTH} cols, JIRA tickets ${d.jira.length} rows (format: ${src})`);
   if (process.argv.includes('--verify')) {   // read back: every date label and the JIRA row count must match
-    const v = await api(tok, `/values:batchGet?ranges=Daily!A1:A2000&ranges=${encodeURIComponent("'JIRA tickets'!A1:A2000")}`, 'GET');
+    const v = await api(tok, `/values:batchGet?ranges=Daily!A1:A2000&ranges=${encodeURIComponent("'JIRA_BugBug'!A1:A2000")}`, 'GET');
     const got = (v.valueRanges[0].values || []).slice(2).map(r => r[0]);
     const want = d.daily.map(r => String(r[0]));
     const jrows = (v.valueRanges[1].values || []).length - 1;
