@@ -1,4 +1,4 @@
--- AA-bugbug cache, in the seo-digest Supabase project (uvdeabpuozztqliatehe).
+-- AA-bugbug cache, in its own Supabase project (moved off seo-digest on 9 Nov 2026 after an egress block).
 -- Closed nights are stored once, so later runs only ask BugBug for the latest night.
 
 create table if not exists public.bugbug_test_runs (

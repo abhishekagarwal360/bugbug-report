@@ -54,7 +54,7 @@ def iso(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# ---------- Supabase cache (seo-digest project) ----------
+# ---------- Supabase cache (own project since 9 Nov 2026; was seo-digest's) ----------
 # Closed nights live in bugbug_test_runs / bugbug_nights (see supabase_tables.sql),
 # so only the still-open night is fetched from BugBug. Creds come from seo-digest's .env.
 SB_ENV = r"C:\Users\abhis\thecrux-bootcamp\seo-digest\.env"
@@ -67,7 +67,9 @@ def sb(method, path, body=None, prefer=None):
     else:
         txt = open(SB_ENV, encoding="utf-8").read()
         url, key = (re.search(r"^%s\s*=\s*(\S+)" % k, txt, re.M).group(1) for k in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY"))
-    h = {"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"}
+    h = {"apikey": key, "Content-Type": "application/json"}
+    if not key.startswith("sb_"):   # legacy JWT key; new sb_secret_ keys go in apikey only
+        h["Authorization"] = "Bearer " + key
     if prefer:
         h["Prefer"] = prefer
     data = json.dumps(body).encode() if body is not None else None

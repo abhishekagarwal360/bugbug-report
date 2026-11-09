@@ -24,7 +24,7 @@ argument-hint: Optional — number of nights (default 7) or a single project
 
 ## Supabase cache (closed nights are never re-fetched)
 
-- Tables `bugbug_test_runs` (every test run) and `bugbug_nights` (one row per fully cached night) live in the **seo-digest** Supabase project `uvdeabpuozztqliatehe`. The schema is in `supabase_tables.sql`, and RLS is on.
+- Tables `bugbug_test_runs` (every test run) and `bugbug_nights` (one row per fully cached night) live in BugBug's **own** Supabase project (since 9 Nov 2026; before that they shared seo-digest's `uvdeabpuozztqliatehe`, which ran out of egress). GitHub secrets `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` point to it; the key is an `sb_secret_` key, sent in the `apikey` header only. The schema is in `supabase_tables.sql`, and RLS is on.
 - The script reads and writes them with `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` from `C:\Users\abhis\thecrux-bootcamp\seo-digest\.env`. It reads them in-process and never prints them.
 - Egress: the project shares its free-plan egress quota with seo-digest. On 8 Nov 2026 it ran over (`402 ... exceed_egress_quota`), which fails every run and also stops the SEO digest. Cause: 48+ runs a day, each re-reading 7 nights of `bugbug_test_runs` on every `plan` round. Now `load_cache` reads Supabase once per run and only the partial nights' runs (the xlsx `report` still reads the whole window). Keep it that way; don't add per-round Supabase reads.
 - `plan` skips every night already in `bugbug_nights`. So on a normal day only the latest one or two nights are fetched (about 12–20 calls instead of about 90).
