@@ -736,7 +736,9 @@ def jira_search(jql=None):
     import base64
     auth = base64.b64encode(f'{secret("ATLASSIAN_EMAIL")}:{secret("ATLASSIAN_API_TOKEN")}'.encode()).decode()
     nodes, token = [], None
-    jql = jql or f"project in (M91, MSP) AND created >= -90d AND {JIRA_MATCH} ORDER BY created DESC"
+    # every BugBug ticket, not just the last 90 days: GitHub runs start with no JIRA cache, and a -90d
+    # cut dropped the older ones from the sheet once the Supabase table was rebuilt (9 Nov 2026)
+    jql = jql or f"project in (M91, MSP) AND {JIRA_MATCH} ORDER BY created DESC"
     while True:
         body = {"jql": jql, "maxResults": 100,
                 "fields": ["summary", "status", "created", "description", "reporter", "issuetype", "labels", "components", "project"]}
