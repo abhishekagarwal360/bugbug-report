@@ -94,34 +94,53 @@ def from_row(r):  # DB row -> BugBug list item shape
             "started": r["started"], "errorCode": r["error_code"], "webappUrl": r["web_url"]}
 
 
-def load_cache(wins, run_ids=()):
-    """-> (cached {(pid, night)}, runs {id: item} for the window, runmap {runId: testId},
+_CACHE = {}  # Supabase reads already made by this process; sync() clears it after writing
+
+
+def load_cache(wins, run_ids=(), all_runs=False):
+    """-> (cached {(pid, night)}, runs {id: item}, runmap {runId: testId},
     floors {(pid, night): datetime}). Never fatal.
+    runs holds only the partial nights unless all_runs (the xlsx report needs the whole window).
     A floor is how far down a partial night still needs re-fetching: its newest cached run,
-    or its oldest unfinished one, minus OVERLAP. Everything older is already in the cache."""
+    or its oldest unfinished one, minus OVERLAP. Everything older is already in the cache.
+    Memoised per process: auto calls plan() every paging round and nothing is written to
+    Supabase until sync(), so re-reading the same rows each round only burns egress
+    (that ran the seo-digest project over its egress quota on 8 Nov 2026)."""
     label2pid = {v: k for k, v in PROJECTS.items()}
     try:
-        # partial nights (still running when cached) are deliberately not treated as cached,
-        # so the next run re-fetches and overwrites them with the full night
-        nights = sb_select("bugbug_nights?select=project,night,partial")
-        cached = {(label2pid.get(r["project"]), datetime.fromisoformat(r["night"]).date())
-                  for r in nights if not r["partial"]}
-        partial = {(label2pid.get(r["project"]), datetime.fromisoformat(r["night"]).date())
-                   for r in nights if r["partial"]}
-        rows = sb_select(f"bugbug_test_runs?select=*&night=gte.{wins[0][0]}&night=lte.{wins[-1][0]}")
+        key = (wins[0][0], wins[-1][0], all_runs)
+        if key not in _CACHE:
+            # partial nights (still running when cached) are deliberately not treated as cached,
+            # so the next run re-fetches and overwrites them with the full night
+            nights = sb_select(f"bugbug_nights?select=project,night,partial&night=gte.{wins[0][0]}&night=lte.{wins[-1][0]}")
+            cached = {(label2pid.get(r["project"]), datetime.fromisoformat(r["night"]).date())
+                      for r in nights if not r["partial"]}
+            partial = {(label2pid.get(r["project"]), datetime.fromisoformat(r["night"]).date())
+                       for r in nights if r["partial"]}
+            if all_runs:
+                rows = sb_select(f"bugbug_test_runs?select=*&night=gte.{wins[0][0]}&night=lte.{wins[-1][0]}")
+            elif partial:   # plan/sync only use the runs of partial nights (floors + their cached part)
+                rows = sb_select("bugbug_test_runs?select=*&night=in.(%s)" % ",".join(sorted({str(d) for _, d in partial})))
+            else:
+                rows = []
+            floors = {}
+            for r in rows:
+                k = (label2pid.get(r["project"]), datetime.fromisoformat(r["night"]).date())
+                if k in partial and r["started"]:
+                    floors.setdefault(k, []).append((ts(r["started"]), r["status"] in DONE))
+            floors = {k: min([max(t for t, _ in v)] + [t for t, fin in v if not fin]) - OVERLAP
+                      for k, v in floors.items()}
+            _CACHE[key] = (cached, {r["id"]: from_row(r) for r in rows}, floors)
+        cached, runs, floors = _CACHE[key]
         runmap = {}
         if run_ids:
-            for r in sb_select("bugbug_test_runs?select=id,test_id&id=in.(%s)" % ",".join(run_ids)):
-                runmap[r["id"]] = r["test_id"]
-        floors = {}
-        for r in rows:
-            key = (label2pid.get(r["project"]), datetime.fromisoformat(r["night"]).date())
-            if key in partial and r["started"]:
-                floors.setdefault(key, []).append((ts(r["started"]), r["status"] in DONE))
-        floors = {k: min([max(t for t, _ in v)] + [t for t, fin in v if not fin]) - OVERLAP
-                  for k, v in floors.items()}
-        return cached, {r["id"]: from_row(r) for r in rows}, runmap, floors
-    except Exception as e:
+            mkey = ("runmap", tuple(run_ids))
+            if mkey not in _CACHE:
+                _CACHE[mkey] = {r["id"]: r["test_id"] for r in
+                                sb_select("bugbug_test_runs?select=id,test_id&id=in.(%s)" % ",".join(run_ids))}
+            runmap = _CACHE[mkey]
+        return cached, runs, runmap, floors
+    except Exception as e:   # not memoised, so the next round tries Supabase again
         print(f"(Supabase cache unavailable: {e}; fetching everything from BugBug)")
         return set(), {}, {}, {}
 
@@ -198,6 +217,7 @@ def sync(nights):
             sb("POST", "bugbug_test_runs", old, "resolution=merge-duplicates")
     except Exception as e:
         print(f"(Supabase save failed: {e})")
+    _CACHE.clear()   # later reads in this process must see what was just written
     print("Cached to Supabase: " + (", ".join(saved) if saved else "nothing new"))
 
 
@@ -446,7 +466,7 @@ def report(nights, outdir):
     _, runs, jira, runmap = collect()
     jira = {**jira_cache()["nodes"], **jira}
     jira_runs = sorted({rid for _, kind, rid in jira_links(jira) if kind == "runs-history/tests"})
-    _, db_runs, db_map, _ = load_cache(wins, jira_runs)
+    _, db_runs, db_map, _ = load_cache(wins, jira_runs, all_runs=True)
     runs = {**db_runs, **runs}
     runmap = {**db_map, **runmap}
     nightset = {d for d, _, _ in wins}
