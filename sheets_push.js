@@ -99,7 +99,7 @@ const widths = (sheetId, px) => px.map((p, i) => ({ updateDimensionProperties: {
   range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: p }, fields: 'pixelSize' } }));
 
 // ---- what changed since the last push, in plain words --------------------------------------
-function changeSummary(oldDaily, oldJira) {
+function changeSummary(oldDaily, oldJira, moved = new Set()) {
   const base = l => String(l || '').replace(' (partial)', '');
   const short = l => base(l).replace(/ \d{4}$/, '');
   const same = (a, b) => typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : String(a ?? '') === String(b ?? '');
@@ -122,7 +122,8 @@ function changeSummary(oldDaily, oldJira) {
     if (bits.length) updated.push(`${short(r[0])}${tag}: ${bits.join('; ')}`);
   }
   const now = new Set(d.daily.map(r => base(r[0])));
-  const removed = Object.keys(prev).filter(k => !now.has(k)).map(short);
+  const removed = Object.keys(prev).filter(k => !now.has(k) && !moved.has(k)).map(short);
+  const archivedNow = [...moved].map(short);
 
   const keyOf = v => (String(v).match(/,"([^"]+)"\)$/) || [, String(v)])[1];
   const oldJ = Object.fromEntries(oldJira.filter(r => r[6]).map(r => [String(r[6]), r]));
@@ -152,6 +153,8 @@ function changeSummary(oldDaily, oldJira) {
   return [`Last update: ${when} IST (${how})`, '',
     `BugBug - ${added.length} row(s) added, ${updated.length} updated` + (removed.length ? `, ${removed.length} removed` : ''),
     list([...added.map(x => 'added ' + x), ...updated.map(x => 'updated ' + x), ...removed.map(x => 'removed ' + x)], 'no change'), '',
+    ...(archivedNow.length ? [`Archive - ${archivedNow.length} night(s) moved from Daily: ${archivedNow.length > 3
+      ? `${archivedNow[0]} ... ${archivedNow[archivedNow.length - 1]}` : archivedNow.join(', ')}`, ''] : []),
     `JIRA - ${jAdded.length} ticket(s) added, ${jUpdated.length} updated`,
     list([...jAdded.map(x => 'added ' + x), ...jUpdated.map(x => 'updated ' + x)], 'no change')].join('\n');
 }
@@ -169,6 +172,36 @@ function changeSummary(oldDaily, oldJira) {
     res.replies.forEach(r => { ids[r.addSheet.properties.title] = r.addSheet.properties.sheetId; });
   }
   const daily = ids['Daily'], jira = ids['JIRA_BugBug'], sid = ids[ST];
+
+  // ---- 0. Daily vs Archive (asked 12 Nov 2026) ---------------------------------------------
+  // Daily = today's partial night + every closed night not archived yet (30, or 31 between the
+  // 3 PM close and the next morning) + the rolling 30-day average. Older nights live on the
+  // Archive tab, newest first. They move once a day: on the 7 AM Vercel run, or the 9:53 AM GitHub
+  // backup if that was dropped (a no-op otherwise). Only the new rows are inserted at the top of
+  // Archive - the tab is never rewritten - and Archive is written BEFORE Daily drops them.
+  const AR = 'Archive';
+  const baseLabel = l => String(l || '').replace(' (partial)', '');
+  const MON = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+  const dayNum = l => { const [dd, m, y] = baseLabel(l).split(' '); return Date.UTC(+y, MON[m], +dd); };   // "05 Nov 2026"
+  let evt = {};
+  try { evt = JSON.parse(require('fs').readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')); } catch {}
+  const runSource = (evt.inputs && evt.inputs.source) || '';
+  const archiveRun = process.argv.includes('--archive') || runSource === 'vercel-cron-ist0700' || runSource.includes('archive')
+    || (process.env.GITHUB_EVENT_NAME === 'schedule' && evt.schedule === '23 4 * * *');
+  const archCol = AR in ids ? ((await api(tok, `/values/${AR}!A1:A2000`, 'GET')).values || []) : [];
+  const archived = new Set(archCol.slice(2).map(r => baseLabel(r[0])).filter(Boolean));
+  const newestArchived = Math.max(-Infinity, ...[...archived].map(dayNum));
+  let toArchive = [];
+  if (archiveRun) {
+    const old = d.daily.filter(r => !String(r[0]).includes('(partial)')).slice(d.daily_days)
+      .filter(r => !archived.has(baseLabel(r[0])));
+    toArchive = old.filter(r => dayNum(r[0]) > newestArchived);   // keeps Archive newest-first
+    if (toArchive.length < old.length)
+      console.log(`::warning::${old.length - toArchive.length} old night(s) are older than Archive's top row - left on Daily`);
+  }
+  const moved = new Set(toArchive.map(r => baseLabel(r[0])));
+  d.daily = [...d.daily.filter(r => !archived.has(baseLabel(r[0])) && !moved.has(baseLabel(r[0]))), d.avg];
+  console.log(`Archive: ${archived.size} nights already there, ${toArchive.length} to move${archiveRun ? '' : ' (not an archive run)'}`);
 
   // ---- 1. snapshot his formatting BEFORE we touch anything ------------------------------
   let colA = [];
@@ -226,7 +259,7 @@ function changeSummary(oldDaily, oldJira) {
   // ---- 1b. old values, so the run can say what it added / changed ---------------------------
   const old = fresh.has('Daily') || fresh.has('JIRA_BugBug') ? { valueRanges: [{}, {}] } : await api(tok,
     `/values:batchGet?valueRenderOption=UNFORMATTED_VALUE&ranges=Daily!A3:ZZ2000&ranges=${encodeURIComponent("'JIRA_BugBug'!A2:ZZ2000")}`, 'GET');
-  let summary = changeSummary(old.valueRanges[0].values || [], old.valueRanges[1].values || []);
+  let summary = changeSummary(old.valueRanges[0].values || [], old.valueRanges[1].values || [], moved);
   if (sanity) {
     const was = new Set(((await api(tok, `/values/${encodeURIComponent(`'${ST}'!G2:G2000`)}?valueRenderOption=FORMULA`, 'GET')).values || [])
       .map(r => (String(r[0]).match(/,"([^"]+)"\)$/) || [])[1]));
@@ -234,13 +267,54 @@ function changeSummary(oldDaily, oldJira) {
     summary += `\n\nAutomation Sanity - ${sanity.length} ticket(s), ${newKeys.length} new` + (newKeys.length ? ': ' + newKeys.join(', ') : '');
   }
 
+  const top = ['Date'], sub = [''];
+  d.labels.forEach(l => { top.push(l, '', '', ''); sub.push('Failed', 'Total', 'Fail %', 'JIRA created'); });
+  const headerMerges = sheetId => [
+    { mergeCells: { mergeType: 'MERGE_COLUMNS', range: { sheetId, startRowIndex: 0, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 1 } } },
+    ...d.labels.map((_, i) => ({ mergeCells: { mergeType: 'MERGE_ROWS',
+      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 1 + i * NCOL, endColumnIndex: 1 + i * NCOL + NCOL } } })),
+  ];
+
+  // ---- 1c. move nights older than the Daily window to the top of Archive (same look as Daily) --
+  if (toArchive.length) {
+    if (!(AR in ids)) {
+      const res = await api(tok, ':batchUpdate', 'POST', { requests: [{ addSheet: { properties: { title: AR } } }] });
+      ids[AR] = res.replies[0].addSheet.properties.sheetId;
+    }
+    const arch = ids[AR], k = toArchive.length;
+    if (archCol.length < 3) {   // empty tab (first move): header + rows in one write
+      await api(tok, `/values/${AR}!A1:ZZ2000:clear`, 'POST', {});
+      await api(tok, `/values/${AR}!A1?valueInputOption=RAW`, 'PUT', { values: [top, sub, ...toArchive] });
+      await api(tok, ':batchUpdate', 'POST', { requests: [
+        { unmergeCells: { range: { sheetId: arch, startRowIndex: 0, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: WIDTH } } },
+        ...headerMerges(arch),
+        cells(arch, 0, fHead1), cells(arch, 1, fHead2),
+        cells(arch, 2, fFirst), ...band(arch, 3, 2 + k - 1, fMid), cells(arch, 2 + k - 1, fLast),
+        { updateSheetProperties: { properties: { sheetId: arch, gridProperties: { frozenRowCount: 2, frozenColumnCount: 1 } }, fields: 'gridProperties(frozenRowCount,frozenColumnCount)' } },
+        ...widths(arch, pxD),
+      ] });
+    } else {                    // insert only the new rows under the header; older rows untouched
+      const had = archCol.length - 2;
+      await api(tok, ':batchUpdate', 'POST', { requests: [
+        { insertDimension: { range: { sheetId: arch, dimension: 'ROWS', startIndex: 2, endIndex: 2 + k }, inheritFromBefore: false } }] });
+      await api(tok, `/values/${AR}!A3?valueInputOption=RAW`, 'PUT', { values: toArchive });
+      await api(tok, ':batchUpdate', 'POST', { requests: [
+        cells(arch, 2, fFirst), ...band(arch, 3, 2 + k, fMid),
+        cells(arch, 2 + k, had === 1 ? fLast : fMid),   // the previous top row loses its top edge
+      ] });
+    }
+    // read back before Daily drops these rows - if Archive didn't take them, stop here (Daily keeps them)
+    const got = ((await api(tok, `/values/${AR}!A3:A${2 + k}`, 'GET')).values || []).map(r => r[0]);
+    const want = toArchive.map(r => String(r[0]));
+    if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`Archive verify failed: wrote ${want.join(', ')}, read ${got.join(', ')}`);
+    console.log(`archived ${k} night(s) to the top of ${AR}: ${want[0]}${k > 1 ? ' ... ' + want[k - 1] : ''}`);
+  }
+
   // ---- 2. clear stale merges, then write values -----------------------------------------
   await api(tok, ':batchUpdate', 'POST', { requests: [
     { unmergeCells: { range: { sheetId: daily, startRowIndex: 0, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: WIDTH } } },
   ] });
 
-  const top = ['Date'], sub = [''];
-  d.labels.forEach(l => { top.push(l, '', '', ''); sub.push('Failed', 'Total', 'Fail %', 'JIRA created'); });
   await api(tok, '/values/Daily!A1:ZZ2000:clear', 'POST', {});
   await api(tok, `/values/Daily!A1?valueInputOption=RAW`, 'PUT', { values: [top, sub, ...d.daily] });
   await api(tok, '/values/' + encodeURIComponent("'JIRA_BugBug'!A1:ZZ2000") + ':clear', 'POST', {});
@@ -259,9 +333,7 @@ function changeSummary(oldDaily, oldJira) {
   const lastDate = hasAvg ? lastRow - 1 : lastRow;        // 1-based row of the final date line
 
   const reqs = [
-    { mergeCells: { mergeType: 'MERGE_COLUMNS', range: { sheetId: daily, startRowIndex: 0, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 1 } } },
-    ...d.labels.map((_, i) => ({ mergeCells: { mergeType: 'MERGE_ROWS',
-      range: { sheetId: daily, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 1 + i * NCOL, endColumnIndex: 1 + i * NCOL + NCOL } } })),
+    ...headerMerges(daily),
     cells(daily, 0, fHead1),
     cells(daily, 1, fHead2),
     cells(daily, 2, fFirst),                              // first date row: top edge of the box

@@ -632,20 +632,31 @@ def sheet_data(a="2000-01-01", b="2999-12-31"):
                     else ["-", "-", "-"]) + [jcount.get((lab, d), 0)]
         daily.append(row)
     full = [r for d, r in zip(days, daily) if d not in part]  # a partial night would drag the mean down
-    if days:  # average row (JIRA column is a total over every day, not a mean)
-        avg = ["Average" + (" (excl. partial)" if part else "")]
-        for i, lab in enumerate(labels):
-            c = 1 + i * NCOL
-            vals = [(r[c], r[c + 1]) for r in full if isinstance(r[c], int)]
-            if vals:
-                f = sum(v[0] for v in vals) / len(vals)
-                t = sum(v[1] for v in vals) / len(vals)
-                avg += [round(f, 1), round(t), round(f / t, 4)]
-            else:
-                avg += ["-", "-", "-"]
-            avg.append(sum(r[c + 3] for r in daily))
-        daily.append(avg)
+    if days:
+        daily.append(avg_row(full, daily, labels, "Average" + (" (excl. partial)" if part else "")))
     return labels, days, daily, jira
+
+
+def avg_row(full, every, labels, label):
+    """Average of the `full` (closed) nights; the JIRA column is a total over `every` row, not a mean."""
+    avg = [label]
+    for i, lab in enumerate(labels):
+        c = 1 + i * NCOL
+        vals = [(r[c], r[c + 1]) for r in full if isinstance(r[c], int)]
+        if vals:
+            f = sum(v[0] for v in vals) / len(vals)
+            t = sum(v[1] for v in vals) / len(vals)
+            avg += [round(f, 1), round(t), round(f / t, 4)]
+        else:
+            avg += ["-", "-", "-"]
+        avg.append(sum(r[c + 3] for r in every))
+    return avg
+
+
+# Daily tab = today's partial night + the latest DAILY_DAYS closed nights (asked 12 Nov 2026).
+# Older nights move to the Archive tab once a day, at the 7 AM run (sheets_push.js does the move,
+# inserting only the new rows at the top of Archive). The Daily average covers just these nights.
+DAILY_DAYS = 30
 
 
 def sheet():
@@ -668,8 +679,15 @@ def sheet():
               link(t["url"], t["key"]),
               link(t.get("bugbug_url"), "View run" if "runs-history" in (t.get("bugbug_url") or "") else "View test")]
              for t in jira]
-    payload = {"labels": labels, "daily": daily, "jira_header": jhdr, "jira": jrows,
-               "range": [days[-1], days[0]]}
+    # every night (newest first) without the all-time average; sheets_push.js picks what stays on
+    # Daily (not yet archived) and adds `avg`, the rolling average of the latest DAILY_DAYS closed nights
+    rows = daily[:-1] if days else []
+    part_rows = [r for r in rows if "(partial)" in r[0]]
+    recent = [r for r in rows if "(partial)" not in r[0]][:DAILY_DAYS]
+    avg = avg_row(recent, part_rows + recent, labels,
+                  f"Average (last {DAILY_DAYS} days" + (", excl. partial)" if part_rows else ")"))
+    payload = {"labels": labels, "daily": rows, "avg": avg, "daily_days": DAILY_DAYS,
+               "jira_header": jhdr, "jira": jrows, "range": [days[-1], days[0]]}
     jpath = os.path.join(tempfile.gettempdir(), "bugbug_sheet_data.json")
     json.dump(payload, open(jpath, "w", encoding="utf-8"))
     print(f"{len(days)} days, {len(jira)} JIRA tickets")
